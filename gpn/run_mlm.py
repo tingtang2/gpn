@@ -32,7 +32,7 @@ import torch
 from typing import Any, Callable, Dict, List, NewType, Optional, Tuple, Union
 
 import datasets
-from datasets import load_dataset, DatasetDict, concatenate_datasets
+from datasets import load_dataset, DatasetDict, concatenate_datasets, load_from_disk
 
 #import evaluate
 import transformers
@@ -61,11 +61,16 @@ from scipy.stats import geom
 from torch.utils.data import DataLoader, IterableDataset, get_worker_info
 
 
-class DataCollatorForLanguageModelingSimplified(DataCollatorForLanguageModeling):
+class DataCollatorForLanguageModelingSimplified(DataCollatorForLanguageModeling
+                                                ):
     # Simplified to skip padding since we'll assume all sequences have the same length
-    def torch_call(self, examples: List[Union[List[int], Any, Dict[str, Any]]]) -> Dict[str, Any]:
+    def torch_call(
+        self, examples: List[Union[List[int], Any,
+                                   Dict[str, Any]]]) -> Dict[str, Any]:
         batch = {
-            key: torch.stack([torch.tensor(example[key]) for example in examples], dim=0)
+            key:
+            torch.stack([torch.tensor(example[key]) for example in examples],
+                        dim=0)
             for key in examples[0].keys()
         }
 
@@ -73,8 +78,7 @@ class DataCollatorForLanguageModelingSimplified(DataCollatorForLanguageModeling)
         special_tokens_mask = batch.pop("special_tokens_mask", None)
         if self.mlm:
             batch["input_ids"], batch["labels"] = self.torch_mask_tokens(
-                batch["input_ids"], special_tokens_mask=special_tokens_mask
-            )
+                batch["input_ids"], special_tokens_mask=special_tokens_mask)
         else:
             labels = batch["input_ids"].clone()
             if self.tokenizer.pad_token_id is not None:
@@ -86,7 +90,10 @@ class DataCollatorForLanguageModelingSimplified(DataCollatorForLanguageModeling)
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 #check_min_version("4.26.0.dev0")
 
-require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/language-modeling/requirements.txt")
+require_version(
+    "datasets>=1.8.0",
+    "To fix: pip install -r examples/pytorch/language-modeling/requirements.txt"
+)
 
 logger = logging.getLogger(__name__)
 MODEL_CONFIG_CLASSES = list(MODEL_FOR_MASKED_LM_MAPPING.keys())
@@ -102,54 +109,74 @@ class ModelArguments:
     model_name_or_path: Optional[str] = field(
         default=None,
         metadata={
-            "help": (
-                "The model checkpoint for weights initialization. Don't set if you want to train a model from scratch."
-            )
+            "help":
+            ("The model checkpoint for weights initialization. Don't set if you want to train a model from scratch."
+             )
         },
     )
     model_type: Optional[str] = field(
         default=None,
-        metadata={"help": "If training from scratch, pass a model type from the list: " + ", ".join(MODEL_TYPES)},
+        metadata={
+            "help":
+            "If training from scratch, pass a model type from the list: " +
+            ", ".join(MODEL_TYPES)
+        },
     )
     config_overrides: Optional[str] = field(
         default=None,
         metadata={
-            "help": (
-                "Override some existing default config settings when a model is trained from scratch. Example: "
-                "n_embd=10,resid_pdrop=0.2,scale_attn_weights=false,summary_type=cls_index"
-            )
+            "help":
+            ("Override some existing default config settings when a model is trained from scratch. Example: "
+             "n_embd=10,resid_pdrop=0.2,scale_attn_weights=false,summary_type=cls_index"
+             )
         },
     )
     config_name: Optional[str] = field(
-        default=None, metadata={"help": "Pretrained config name or path if not the same as model_name"}
-    )
+        default=None,
+        metadata={
+            "help":
+            "Pretrained config name or path if not the same as model_name"
+        })
     tokenizer_name: Optional[str] = field(
-        default=None, metadata={"help": "Pretrained tokenizer name or path if not the same as model_name"}
-    )
+        default=None,
+        metadata={
+            "help":
+            "Pretrained tokenizer name or path if not the same as model_name"
+        })
     cache_dir: Optional[str] = field(
         default=None,
-        metadata={"help": "Where do you want to store the pretrained models downloaded from huggingface.co"},
+        metadata={
+            "help":
+            "Where do you want to store the pretrained models downloaded from huggingface.co"
+        },
     )
     use_fast_tokenizer: bool = field(
         default=True,
-        metadata={"help": "Whether to use one of the fast tokenizer (backed by the tokenizers library) or not."},
+        metadata={
+            "help":
+            "Whether to use one of the fast tokenizer (backed by the tokenizers library) or not."
+        },
     )
     model_revision: str = field(
         default="main",
-        metadata={"help": "The specific model version to use (can be a branch name, tag name or commit id)."},
+        metadata={
+            "help":
+            "The specific model version to use (can be a branch name, tag name or commit id)."
+        },
     )
     use_auth_token: bool = field(
         default=False,
         metadata={
-            "help": (
-                "Will use the token generated when running `huggingface-cli login` (necessary to use this script "
-                "with private models)."
-            )
+            "help":
+            ("Will use the token generated when running `huggingface-cli login` (necessary to use this script "
+             "with private models).")
         },
     )
 
     def __post_init__(self):
-        if self.config_overrides is not None and (self.config_name is not None or self.model_name_or_path is not None):
+        if self.config_overrides is not None and (self.config_name is not None
+                                                  or self.model_name_or_path
+                                                  is not None):
             raise ValueError(
                 "--config_overrides can't be used in combination with --config_name or --model_name_or_path"
             )
@@ -162,70 +189,86 @@ class DataTrainingArguments:
     """
 
     dataset_name: Optional[str] = field(
-        default=None, metadata={"help": "The name of the dataset to use (via the datasets library)."}
-    )
+        default=None,
+        metadata={
+            "help":
+            "The name of the dataset to use (via the datasets library)."
+        })
     dataset_config_name: Optional[str] = field(
-        default=None, metadata={"help": "The configuration name of the dataset to use (via the datasets library)."}
-    )
-    train_file: Optional[str] = field(default=None, metadata={"help": "The input training data file (a text file)."})
+        default=None,
+        metadata={
+            "help":
+            "The configuration name of the dataset to use (via the datasets library)."
+        })
+    train_file: Optional[str] = field(
+        default=None,
+        metadata={"help": "The input training data file (a text file)."})
     validation_file: Optional[str] = field(
         default=None,
-        metadata={"help": "An optional input evaluation data file to evaluate the perplexity on (a text file)."},
+        metadata={
+            "help":
+            "An optional input evaluation data file to evaluate the perplexity on (a text file)."
+        },
     )
     overwrite_cache: bool = field(
-        default=False, metadata={"help": "Overwrite the cached training and evaluation sets"}
-    )
+        default=False,
+        metadata={"help": "Overwrite the cached training and evaluation sets"})
     validation_split_percentage: Optional[int] = field(
         default=5,
         metadata={
-            "help": "The percentage of the train set used as validation set in case there's no validation split"
+            "help":
+            "The percentage of the train set used as validation set in case there's no validation split"
         },
     )
     max_seq_length: Optional[int] = field(
         default=None,
         metadata={
-            "help": (
-                "The maximum total input sequence length after tokenization. Sequences longer "
-                "than this will be truncated."
-            )
+            "help":
+            ("The maximum total input sequence length after tokenization. Sequences longer "
+             "than this will be truncated.")
         },
     )
     preprocessing_num_workers: Optional[int] = field(
         default=None,
-        metadata={"help": "The number of processes to use for the preprocessing."},
+        metadata={
+            "help": "The number of processes to use for the preprocessing."
+        },
     )
     mlm_probability: float = field(
-        default=0.15, metadata={"help": "Ratio of tokens to mask for masked language modeling loss"}
-    )
+        default=0.15,
+        metadata={
+            "help": "Ratio of tokens to mask for masked language modeling loss"
+        })
     line_by_line: bool = field(
         default=False,
-        metadata={"help": "Whether distinct lines of text in the dataset are to be handled as distinct sequences."},
+        metadata={
+            "help":
+            "Whether distinct lines of text in the dataset are to be handled as distinct sequences."
+        },
     )
     pad_to_max_length: bool = field(
         default=False,
         metadata={
-            "help": (
-                "Whether to pad all samples to `max_seq_length`. "
-                "If False, will pad the samples dynamically when batching to the maximum length in the batch."
-            )
+            "help":
+            ("Whether to pad all samples to `max_seq_length`. "
+             "If False, will pad the samples dynamically when batching to the maximum length in the batch."
+             )
         },
     )
     max_train_samples: Optional[int] = field(
         default=None,
         metadata={
-            "help": (
-                "For debugging purposes or quicker training, truncate the number of training examples to this "
-                "value if set."
-            )
+            "help":
+            ("For debugging purposes or quicker training, truncate the number of training examples to this "
+             "value if set.")
         },
     )
     max_eval_samples: Optional[int] = field(
         default=None,
         metadata={
-            "help": (
-                "For debugging purposes or quicker training, truncate the number of evaluation examples to this "
-                "value if set."
-            )
+            "help":
+            ("For debugging purposes or quicker training, truncate the number of evaluation examples to this "
+             "value if set.")
         },
     )
     soft_masked_loss_weight_train: Optional[float] = field(default=1.0)
@@ -235,16 +278,20 @@ class DataTrainingArguments:
 
     def __post_init__(self):
         if self.dataset_name is None and self.train_file is None and self.validation_file is None:
-            raise ValueError("Need either a dataset name or a training/validation file.")
+            raise ValueError(
+                "Need either a dataset name or a training/validation file.")
         else:
             if self.train_file is not None:
                 extension = self.train_file.split(".")[-1]
                 if extension not in ["csv", "json", "txt"]:
-                    raise ValueError("`train_file` should be a csv, a json or a txt file.")
+                    raise ValueError(
+                        "`train_file` should be a csv, a json or a txt file.")
             if self.validation_file is not None:
                 extension = self.validation_file.split(".")[-1]
                 if extension not in ["csv", "json", "txt"]:
-                    raise ValueError("`validation_file` should be a csv, a json or a txt file.")
+                    raise ValueError(
+                        "`validation_file` should be a csv, a json or a txt file."
+                    )
 
 
 def main():
@@ -252,13 +299,16 @@ def main():
     # or by passing the --help flag to this script.
     # We now keep distinct sets of args, for a cleaner separation of concerns.
 
-    parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
+    parser = HfArgumentParser(
+        (ModelArguments, DataTrainingArguments, TrainingArguments))
     if len(sys.argv) == 2 and sys.argv[1].endswith(".json"):
         # If we pass only one argument to the script and it's the path to a json file,
         # let's parse it to get our arguments.
-        model_args, data_args, training_args = parser.parse_json_file(json_file=os.path.abspath(sys.argv[1]))
+        model_args, data_args, training_args = parser.parse_json_file(
+            json_file=os.path.abspath(sys.argv[1]))
     else:
-        model_args, data_args, training_args = parser.parse_args_into_dataclasses()
+        model_args, data_args, training_args = parser.parse_args_into_dataclasses(
+        )
 
     # Sending telemetry. Tracking the example usage helps us better allocate resources to maintain them. The
     # information sent is the one passed as arguments along with your Python/PyTorch versions.
@@ -281,20 +331,23 @@ def main():
     # Log on each process the small summary:
     logger.warning(
         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}"
-        + f"distributed training: {bool(training_args.local_rank != -1)}, 16-bits training: {training_args.fp16}"
+        +
+        f"distributed training: {bool(training_args.local_rank != -1)}, 16-bits training: {training_args.fp16}"
     )
     # Set the verbosity to info of the Transformers logger (on main process only):
     logger.info(f"Training/evaluation parameters {training_args}")
 
     # Detecting last checkpoint.
     last_checkpoint = None
-    if os.path.isdir(training_args.output_dir) and training_args.do_train and not training_args.overwrite_output_dir:
+    if os.path.isdir(
+            training_args.output_dir
+    ) and training_args.do_train and not training_args.overwrite_output_dir:
         last_checkpoint = get_last_checkpoint(training_args.output_dir)
-        if last_checkpoint is None and len(os.listdir(training_args.output_dir)) > 0:
+        if last_checkpoint is None and len(os.listdir(
+                training_args.output_dir)) > 0:
             raise ValueError(
                 f"Output directory ({training_args.output_dir}) already exists and is not empty. "
-                "Use --overwrite_output_dir to overcome."
-            )
+                "Use --overwrite_output_dir to overcome.")
         elif last_checkpoint is not None and training_args.resume_from_checkpoint is None:
             logger.info(
                 f"Checkpoint detected, resuming training at {last_checkpoint}. To avoid this behavior, change "
@@ -306,13 +359,16 @@ def main():
 
     # Downloading and loading a dataset from the hub.
     # Also works for local dataset
-    raw_datasets = load_dataset(
-        data_args.dataset_name,
-        data_args.dataset_config_name,
-        cache_dir=model_args.cache_dir,
-        use_auth_token=True if model_args.use_auth_token else None,
-        streaming=True,
-    )
+
+    # TODO: edit for custom dataset (add features)
+    # raw_datasets = load_dataset(
+    #     data_args.dataset_name,
+    #     data_args.dataset_config_name,
+    #     cache_dir=model_args.cache_dir,
+    #     use_auth_token=True if model_args.use_auth_token else None,
+    #     streaming=True,
+    # )
+    raw_datasets = load_from_disk(data_args.dataset_name)
     print(raw_datasets)
 
     # Load pretrained model and tokenizer
@@ -326,12 +382,15 @@ def main():
         "use_auth_token": True if model_args.use_auth_token else None,
     }
     if model_args.config_name:
-        config = AutoConfig.from_pretrained(model_args.config_name, **config_kwargs)
+        config = AutoConfig.from_pretrained(model_args.config_name,
+                                            **config_kwargs)
     elif model_args.model_name_or_path:
-        config = AutoConfig.from_pretrained(model_args.model_name_or_path, **config_kwargs)
+        config = AutoConfig.from_pretrained(model_args.model_name_or_path,
+                                            **config_kwargs)
     else:
         config = CONFIG_MAPPING[model_args.model_type]()
-        logger.warning("You are instantiating a new config instance from scratch.")
+        logger.warning(
+            "You are instantiating a new config instance from scratch.")
         if model_args.config_overrides is not None:
             logger.info(f"Overriding config: {model_args.config_overrides}")
             config.update_from_string(model_args.config_overrides)
@@ -344,9 +403,11 @@ def main():
         "use_auth_token": True if model_args.use_auth_token else None,
     }
     if model_args.tokenizer_name:
-        tokenizer = AutoTokenizer.from_pretrained(model_args.tokenizer_name, **tokenizer_kwargs)
+        tokenizer = AutoTokenizer.from_pretrained(model_args.tokenizer_name,
+                                                  **tokenizer_kwargs)
     elif model_args.model_name_or_path:
-        tokenizer = AutoTokenizer.from_pretrained(model_args.model_name_or_path, **tokenizer_kwargs)
+        tokenizer = AutoTokenizer.from_pretrained(
+            model_args.model_name_or_path, **tokenizer_kwargs)
     else:
         raise ValueError(
             "You are instantiating a new tokenizer from scratch. This is not supported by this script."
@@ -376,9 +437,8 @@ def main():
             return_attention_mask=False,
         )
         res["loss_weight"] = np.ones_like(res["input_ids"], dtype=float)
-        res["loss_weight"][
-            np.char.islower([list(x) for x in examples["seq"]])
-        ] = soft_masked_weight
+        res["loss_weight"][np.char.islower([list(x) for x in examples["seq"]
+                                            ])] = soft_masked_weight
         return res
 
     soft_masked_weight = {
@@ -386,24 +446,30 @@ def main():
         "validation": data_args.soft_masked_loss_weight_evaluation,
     }
 
-    remove_columns =  ["assembly", "chrom", "start", "end", "strand", "seq"]
+    remove_columns = ["assembly", "chrom", "start", "end", "strand", "seq"]
 
     if training_args.do_train:
         train_dataset = raw_datasets["train"].map(
-            lambda examples: tokenize_function(examples, data_args.soft_masked_loss_weight_train),
-            batched=True, remove_columns=remove_columns,
+            lambda examples: tokenize_function(
+                examples, data_args.soft_masked_loss_weight_train),
+            batched=True,
+            remove_columns=remove_columns,
         )
 
     if training_args.do_eval:
         eval_dataset = raw_datasets["validation"].map(
-            lambda examples: tokenize_function(examples, data_args.soft_masked_loss_weight_evaluation),
-            batched=True, remove_columns=remove_columns,
+            lambda examples: tokenize_function(
+                examples, data_args.soft_masked_loss_weight_evaluation),
+            batched=True,
+            remove_columns=remove_columns,
         )
 
     if data_args.do_test:
         test_dataset = raw_datasets["test"].map(
-            lambda examples: tokenize_function(examples, data_args.soft_masked_loss_weight_test),
-            batched=True, remove_columns=remove_columns,
+            lambda examples: tokenize_function(
+                examples, data_args.soft_masked_loss_weight_test),
+            batched=True,
+            remove_columns=remove_columns,
         )
 
     data_collator = DataCollatorForLanguageModelingSimplified(
@@ -442,7 +508,8 @@ def main():
 
         metrics = trainer.evaluate()
 
-        max_eval_samples = data_args.max_eval_samples if data_args.max_eval_samples is not None else len(eval_dataset)
+        max_eval_samples = data_args.max_eval_samples if data_args.max_eval_samples is not None else len(
+            eval_dataset)
         metrics["eval_samples"] = min(max_eval_samples, len(eval_dataset))
         try:
             perplexity = math.exp(metrics["eval_loss"])
@@ -469,12 +536,16 @@ def main():
         trainer.log_metrics("test", metrics)
         trainer.save_metrics("test", metrics)
 
-    kwargs = {"finetuned_from": model_args.model_name_or_path, "tasks": "fill-mask"}
+    kwargs = {
+        "finetuned_from": model_args.model_name_or_path,
+        "tasks": "fill-mask"
+    }
     if data_args.dataset_name is not None:
         kwargs["dataset_tags"] = data_args.dataset_name
         if data_args.dataset_config_name is not None:
             kwargs["dataset_args"] = data_args.dataset_config_name
-            kwargs["dataset"] = f"{data_args.dataset_name} {data_args.dataset_config_name}"
+            kwargs[
+                "dataset"] = f"{data_args.dataset_name} {data_args.dataset_config_name}"
         else:
             kwargs["dataset"] = data_args.dataset_name
 

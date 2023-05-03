@@ -3,7 +3,6 @@ import pandas as pd
 from tokenizers import decoders, models, normalizers, pre_tokenizers, processors, trainers, Tokenizer
 from transformers import PreTrainedTokenizerFast
 
-
 dataset = ["acgt"]
 special_tokens = [
     "[PAD]",
@@ -13,7 +12,8 @@ special_tokens = [
 
 tokenizer = Tokenizer(models.BPE(unk_token="[UNK]"))
 tokenizer.normalizer = normalizers.Lowercase()
-tokenizer.pre_tokenizer = pre_tokenizers.Whitespace()  # should not be used at all
+tokenizer.pre_tokenizer = pre_tokenizers.Whitespace(
+)  # should not be used at all
 trainer = trainers.BpeTrainer(
     vocab_size=7,
     special_tokens=special_tokens,
