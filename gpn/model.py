@@ -7,7 +7,10 @@ from transformers.modeling_outputs import MaskedLMOutput, BaseModelOutput
 from typing import Optional, Tuple, Union
 
 from .modules import (
-    TransposeLayer, ConvLayer, OneHotEmbedding, get_dilation_schedule,
+    TransposeLayer,
+    ConvLayer,
+    OneHotEmbedding,
+    get_dilation_schedule,
     GPNEmbedding,
 )
 
@@ -15,18 +18,16 @@ from .modules import (
 class ConvNetConfig(PretrainedConfig):
     model_type = "ConvNet"
 
-    def __init__(
-        self,
-        vocab_size=7,
-        hidden_size=512,
-        n_layers=25,
-        kernel_size=9,
-        dilation_double_every=1,
-        dilation_max=32,
-        dilation_cycle=6,
-        initializer_range=0.02,
-        **kwargs
-    ):
+    def __init__(self,
+                 vocab_size=7,
+                 hidden_size=512,
+                 n_layers=25,
+                 kernel_size=9,
+                 dilation_double_every=1,
+                 dilation_max=32,
+                 dilation_cycle=6,
+                 initializer_range=0.02,
+                 **kwargs):
         super().__init__(**kwargs)
         self.vocab_size = vocab_size
         self.n_layers = n_layers
@@ -36,6 +37,7 @@ class ConvNetConfig(PretrainedConfig):
         self.dilation_max = dilation_max
         self.dilation_cycle = dilation_cycle
         self.initializer_range = initializer_range
+        self.use_annotations = True
 
 
 class ConvNetPreTrainedModel(PreTrainedModel):
@@ -49,11 +51,13 @@ class ConvNetPreTrainedModel(PreTrainedModel):
         if isinstance(module, nn.Linear):
             # Slightly different from the TF version which uses truncated_normal for initialization
             # cf https://github.com/pytorch/pytorch/pull/5617
-            module.weight.data.normal_(mean=0.0, std=self.config.initializer_range)
+            module.weight.data.normal_(mean=0.0,
+                                       std=self.config.initializer_range)
             if module.bias is not None:
                 module.bias.data.zero_()
         elif isinstance(module, nn.Embedding):
-            module.weight.data.normal_(mean=0.0, std=self.config.initializer_range)
+            module.weight.data.normal_(mean=0.0,
+                                       std=self.config.initializer_range)
             if module.padding_idx is not None:
                 module.weight.data[module.padding_idx].zero_()
         elif isinstance(module, nn.LayerNorm):
@@ -62,6 +66,7 @@ class ConvNetPreTrainedModel(PreTrainedModel):
 
 
 class ConvNetModel(ConvNetPreTrainedModel):
+
     def __init__(
         self,
         config,
@@ -73,33 +78,51 @@ class ConvNetModel(ConvNetPreTrainedModel):
         self.embedding = OneHotEmbedding(config.hidden_size)
 
         self.dilation_schedule = get_dilation_schedule(config)
+        if config.use_annotations:
+            hidden_size = config.hidden_size + 3
+        else:
+            hidden_size = config.hidden_size
+
         self.encoder = nn.Sequential(*[
             ConvLayer(
-                hidden_size=config.hidden_size,
+                hidden_size=hidden_size,
                 kernel_size=config.kernel_size,
                 dilation=self.dilation_schedule[i],
-            )
-            for i in range(config.n_layers)
+            ) for i in range(config.n_layers)
         ])
         self.post_init()
 
-    def forward(self, input_ids=None, **kwargs):
+    def forward(self,
+                input_ids=None,
+                human_peripheralPU1nuclei_atac_hg19=None,
+                human_peripheralPU1nuclei_H3K27ac_hg19=None,
+                human_PU1nuclei_H3K4me3_epilepsy_hg19=None,
+                **kwargs):
         x = self.embedding(input_ids)
+        x = torch.cat((x, human_peripheralPU1nuclei_atac_hg19.unsqueeze(-1),
+                       human_peripheralPU1nuclei_H3K27ac_hg19.unsqueeze(-1),
+                       human_PU1nuclei_H3K4me3_epilepsy_hg19.unsqueeze(-1)),
+                      dim=-1)
         x = self.encoder(x)
         return BaseModelOutput(last_hidden_state=x)
 
 
 class ConvNetOnlyMLMHead(nn.Module):
+
     def __init__(
         self,
         config,
     ):
+        if config.use_annotations:
+            hidden_size = config.hidden_size + 3
+        else:
+            hidden_size = config.hidden_size
         super().__init__()
         self.decoder = nn.Sequential(
-            nn.Linear(config.hidden_size, config.hidden_size),
+            nn.Linear(hidden_size, hidden_size),
             nn.GELU(),
-            nn.LayerNorm(config.hidden_size),
-            nn.Linear(config.hidden_size, config.vocab_size),
+            nn.LayerNorm(hidden_size),
+            nn.Linear(hidden_size, config.vocab_size),
         )
 
     def forward(self, hidden_state):
@@ -107,6 +130,7 @@ class ConvNetOnlyMLMHead(nn.Module):
 
 
 class ConvNetForMaskedLM(ConvNetPreTrainedModel):
+
     def __init__(
         self,
         config,
@@ -118,7 +142,8 @@ class ConvNetForMaskedLM(ConvNetPreTrainedModel):
         self.post_init()
 
     def forward(self, input_ids=None, labels=None, loss_weight=None, **kwargs):
-        hidden_state = self.model(input_ids=input_ids, **kwargs).last_hidden_state
+        hidden_state = self.model(input_ids=input_ids,
+                                  **kwargs).last_hidden_state
         logits = self.cls(hidden_state)
         loss = None
         if labels is not None:
@@ -126,7 +151,7 @@ class ConvNetForMaskedLM(ConvNetPreTrainedModel):
             labels = labels.view(-1)
             loss = loss_fct(logits.view(-1, self.config.vocab_size), labels)
             loss_weight = loss_weight.view(-1)
-            loss_weight[labels==-100] = 0.0
+            loss_weight[labels == -100] = 0.0
             loss = (loss * loss_weight / loss_weight.sum()).sum()
         return MaskedLMOutput(
             loss=loss,
@@ -134,11 +159,9 @@ class ConvNetForMaskedLM(ConvNetPreTrainedModel):
         )
 
 
-
 AutoConfig.register("ConvNet", ConvNetConfig)
 AutoModel.register(ConvNetConfig, ConvNetModel)
 AutoModelForMaskedLM.register(ConvNetConfig, ConvNetForMaskedLM)
-
 
 from transformers import RoFormerConfig, RoFormerModel, RoFormerForMaskedLM
 from transformers.models.roformer.modeling_roformer import RoFormerEncoder, RoFormerOnlyMLMHead, RoFormerSinusoidalPositionalEmbedding
@@ -147,11 +170,7 @@ from transformers.models.roformer.modeling_roformer import RoFormerEncoder, RoFo
 class GPNRoFormerConfig(RoFormerConfig):
     model_type = "GPNRoFormer"
 
-    def __init__(
-        self,
-        n_aux_features=0,
-        **kwargs
-    ):
+    def __init__(self, n_aux_features=0, **kwargs):
         super().__init__(**kwargs)
         self.n_aux_features = n_aux_features
 
@@ -165,13 +184,15 @@ class GPNRoFormerPreTrainedModel(PreTrainedModel):
         if isinstance(module, nn.Linear):
             # Slightly different from the TF version which uses truncated_normal for initialization
             # cf https://github.com/pytorch/pytorch/pull/5617
-            module.weight.data.normal_(mean=0.0, std=self.config.initializer_range)
+            module.weight.data.normal_(mean=0.0,
+                                       std=self.config.initializer_range)
             if module.bias is not None:
                 module.bias.data.zero_()
         elif isinstance(module, RoFormerSinusoidalPositionalEmbedding):
             pass
         elif isinstance(module, nn.Embedding):
-            module.weight.data.normal_(mean=0.0, std=self.config.initializer_range)
+            module.weight.data.normal_(mean=0.0,
+                                       std=self.config.initializer_range)
             if module.padding_idx is not None:
                 module.weight.data[module.padding_idx].zero_()
         elif isinstance(module, nn.LayerNorm):
@@ -184,11 +205,14 @@ class GPNRoFormerPreTrainedModel(PreTrainedModel):
 
 
 class GPNRoFormerModel(GPNRoFormerPreTrainedModel):
+
     def __init__(self, config):
         super().__init__(config)
         self.config = config
         self.embedding = GPNEmbedding(
-            config.vocab_size, config.n_aux_features, config.hidden_size,
+            config.vocab_size,
+            config.n_aux_features,
+            config.hidden_size,
         )
         self.encoder = RoFormerEncoder(config)
 
@@ -202,6 +226,7 @@ class GPNRoFormerModel(GPNRoFormerPreTrainedModel):
 
 
 class GPNRoFormerForMaskedLM(GPNRoFormerPreTrainedModel):
+
     def __init__(self, config):
         super().__init__(config)
 
@@ -211,26 +236,20 @@ class GPNRoFormerForMaskedLM(GPNRoFormerPreTrainedModel):
         # Initialize weights and apply final processing
         self.post_init()
 
-    def forward(
-        self,
-        labels=None,
-        loss_weight=None,
-        **kwargs
-    ):
+    def forward(self, labels=None, loss_weight=None, **kwargs):
         hidden_state = self.model(**kwargs).last_hidden_state
         logits = self.cls(hidden_state)
         loss = None
         if labels is not None and loss_weight is None:
             loss_fct = CrossEntropyLoss()
-            loss = loss_fct(
-                logits.view(-1, self.config.vocab_size), labels.view(-1)
-            )
+            loss = loss_fct(logits.view(-1, self.config.vocab_size),
+                            labels.view(-1))
         if labels is not None and loss_weight is not None:
             loss_fct = CrossEntropyLoss(reduction="none")
             labels = labels.view(-1)
             loss = loss_fct(logits.view(-1, self.config.vocab_size), labels)
             loss_weight = loss_weight.view(-1)
-            loss_weight[labels==-100] = 0.0
+            loss_weight[labels == -100] = 0.0
             loss = (loss * loss_weight / loss_weight.sum()).sum()
         return MaskedLMOutput(
             loss=loss,
