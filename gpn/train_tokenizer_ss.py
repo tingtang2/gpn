@@ -7,10 +7,10 @@ dataset = ["acgt"]
 special_tokens = [
     "[PAD]",
     "[MASK]",
-    "[UNK]",
+    "N",
 ]
 
-tokenizer = Tokenizer(models.BPE(unk_token="[UNK]"))
+tokenizer = Tokenizer(models.BPE(unk_token="N"))
 tokenizer.normalizer = normalizers.Lowercase()
 tokenizer.pre_tokenizer = pre_tokenizers.Whitespace(
 )  # should not be used at all
@@ -24,7 +24,7 @@ tokenizer = PreTrainedTokenizerFast(
     tokenizer_object=tokenizer,
     pad_token="[PAD]",
     mask_token="[MASK]",
-    unk_token="[UNK]",
+    unk_token="N",
 )
 print(len(tokenizer))
 tokenizer.save_pretrained("tokenizer_ss")

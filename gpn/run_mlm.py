@@ -429,7 +429,7 @@ def main():
 
     def tokenize_function(examples, soft_masked_weight):
         res = tokenizer(
-            examples["seq"],
+            examples["context_seq"],
             return_special_tokens_mask=True,
             padding=False,
             truncation=False,
@@ -437,8 +437,8 @@ def main():
             return_attention_mask=False,
         )
         res["loss_weight"] = np.ones_like(res["input_ids"], dtype=float)
-        res["loss_weight"][np.char.islower([list(x) for x in examples["seq"]
-                                            ])] = soft_masked_weight
+        res["loss_weight"][np.char.islower(
+            [list(x) for x in examples["context_seq"]])] = soft_masked_weight
         return res
 
     soft_masked_weight = {
@@ -446,7 +446,10 @@ def main():
         "validation": data_args.soft_masked_loss_weight_evaluation,
     }
 
-    remove_columns = ["assembly", "chrom", "start", "end", "strand", "seq"]
+    remove_columns = [
+        "seq_length", "Chromosome", "Start", "End", "seq_N", "seq", "pct_N",
+        "context_seq"
+    ]
 
     if training_args.do_train:
         train_dataset = raw_datasets["train"].map(
@@ -457,7 +460,7 @@ def main():
         )
 
     if training_args.do_eval:
-        eval_dataset = raw_datasets["validation"].map(
+        eval_dataset = raw_datasets["val"].map(
             lambda examples: tokenize_function(
                 examples, data_args.soft_masked_loss_weight_evaluation),
             batched=True,
