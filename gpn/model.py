@@ -99,10 +99,11 @@ class ConvNetModel(ConvNetPreTrainedModel):
                 human_PU1nuclei_H3K4me3_epilepsy_hg19=None,
                 **kwargs):
         x = self.embedding(input_ids)
-        x = torch.cat((x, human_peripheralPU1nuclei_atac_hg19.unsqueeze(-1),
-                       human_peripheralPU1nuclei_H3K27ac_hg19.unsqueeze(-1),
-                       human_PU1nuclei_H3K4me3_epilepsy_hg19.unsqueeze(-1)),
-                      dim=-1)
+        if self.config.use_annotations:
+            x = torch.cat((x, human_peripheralPU1nuclei_atac_hg19.unsqueeze(-1),
+                        human_peripheralPU1nuclei_H3K27ac_hg19.unsqueeze(-1),
+                        human_PU1nuclei_H3K4me3_epilepsy_hg19.unsqueeze(-1)),
+                        dim=-1)
         x = self.encoder(x)
         return BaseModelOutput(last_hidden_state=x)
 
