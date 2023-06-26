@@ -27,6 +27,7 @@ class ConvNetConfig(PretrainedConfig):
                  dilation_max=32,
                  dilation_cycle=6,
                  initializer_range=0.02,
+                 use_annotations=True,
                  **kwargs):
         super().__init__(**kwargs)
         self.vocab_size = vocab_size
@@ -37,7 +38,7 @@ class ConvNetConfig(PretrainedConfig):
         self.dilation_max = dilation_max
         self.dilation_cycle = dilation_cycle
         self.initializer_range = initializer_range
-        self.use_annotations = True
+        self.use_annotations = use_annotations
 
 
 class ConvNetPreTrainedModel(PreTrainedModel):
@@ -100,10 +101,11 @@ class ConvNetModel(ConvNetPreTrainedModel):
                 **kwargs):
         x = self.embedding(input_ids)
         if self.config.use_annotations:
-            x = torch.cat((x, human_peripheralPU1nuclei_atac_hg19.unsqueeze(-1),
-                        human_peripheralPU1nuclei_H3K27ac_hg19.unsqueeze(-1),
-                        human_PU1nuclei_H3K4me3_epilepsy_hg19.unsqueeze(-1)),
-                        dim=-1)
+            x = torch.cat(
+                (x, human_peripheralPU1nuclei_atac_hg19.unsqueeze(-1),
+                 human_peripheralPU1nuclei_H3K27ac_hg19.unsqueeze(-1),
+                 human_PU1nuclei_H3K4me3_epilepsy_hg19.unsqueeze(-1)),
+                dim=-1)
         x = self.encoder(x)
         return BaseModelOutput(last_hidden_state=x)
 

@@ -172,6 +172,13 @@ class ModelArguments:
              "with private models).")
         },
     )
+    use_annotations: bool = field(
+        default=True,
+        metadata={
+            "help":
+            "Where to include ATAC-seq annotations as inputs into encoder or not."
+        },
+    )
 
     def __post_init__(self):
         if self.config_overrides is not None and (self.config_name is not None
@@ -380,6 +387,7 @@ def main():
         "cache_dir": model_args.cache_dir,
         "revision": model_args.model_revision,
         "use_auth_token": True if model_args.use_auth_token else None,
+        "use_annotations": model_args.use_annotations
     }
     if model_args.config_name:
         config = AutoConfig.from_pretrained(model_args.config_name,
