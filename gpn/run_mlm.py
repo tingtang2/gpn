@@ -173,7 +173,7 @@ class ModelArguments:
         },
     )
     use_annotations: bool = field(
-        default=True,
+        default=False,
         metadata={
             "help":
             "Where to include ATAC-seq annotations as inputs into encoder or not."
@@ -433,6 +433,7 @@ def main():
         )
     else:
         logger.info("Training new model from scratch")
+        print(config)
         model = AutoModelForMaskedLM.from_config(config)
 
     def tokenize_function(examples, soft_masked_weight):
