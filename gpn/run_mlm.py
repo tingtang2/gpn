@@ -201,6 +201,12 @@ class DataTrainingArguments:
             "help":
             "The name of the dataset to use (via the datasets library)."
         })
+    open_chromatin_dataset_name: Optional[str] = field(
+        default=None,
+        metadata={
+            "help":
+            "The name of the dataset to use (via the datasets library)."
+        })
     dataset_config_name: Optional[str] = field(
         default=None,
         metadata={
@@ -378,6 +384,10 @@ def main():
     raw_datasets = load_from_disk(data_args.dataset_name)
     print(raw_datasets)
 
+    open_chromatin_raw_datasets = load_from_disk(
+        data_args.open_chromatin_dataset_name)
+    print('open chromatin set:', open_chromatin_raw_datasets, sep='\n')
+
     # Load pretrained model and tokenizer
     #
     # Distributed training:
@@ -476,6 +486,13 @@ def main():
             remove_columns=remove_columns,
         )
 
+        open_chromatin_eval_dataset = open_chromatin_raw_datasets["val"].map(
+            lambda examples: tokenize_function(
+                examples, data_args.soft_masked_loss_weight_evaluation),
+            batched=True,
+            remove_columns=remove_columns,
+        )
+
     if data_args.do_test:
         test_dataset = raw_datasets["test"].map(
             lambda examples: tokenize_function(
@@ -494,7 +511,10 @@ def main():
         model=model,
         args=training_args,
         train_dataset=train_dataset if training_args.do_train else None,
-        eval_dataset=eval_dataset if training_args.do_eval else None,
+        eval_dataset={
+            'global': eval_dataset,
+            'open_chromatin': open_chromatin_eval_dataset
+        } if training_args.do_eval else None,
         tokenizer=tokenizer,
         data_collator=data_collator,
     )
