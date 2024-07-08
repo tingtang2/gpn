@@ -2,8 +2,7 @@ from Bio import AlignIO, SeqIO
 from Bio.Seq import Seq
 import bioframe as bf
 from collections import defaultdict
-from cyvcf2 import VCF
-from gpn.define_intervals import (
+from gpn.data import (
     filter_defined, filter_length, load_table, add_flank, get_annotation_features,
     add_jitter, get_promoters, get_random_intervals, union_intervals,
     intersect_intervals, intervals_size
@@ -24,22 +23,14 @@ from sklearn.pipeline import Pipeline
 import torch
 from tqdm import tqdm
 tqdm.pandas()
-from umap import UMAP
 
-import sgkit as sg
-from sgkit.io.vcf import vcf_to_zarr
-from dask.diagnostics import ProgressBar
-pbar = ProgressBar()
-pbar.register()
-
-
-from gpn.make_dataset_mlm import make_windows, get_seq
-from gpn.utils import load_fasta, save_fasta, load_table, load_repeatmasker, Genome
+from gpn.data import make_windows, get_seq
+from gpn.data import load_fasta, save_fasta, load_table, load_repeatmasker, Genome
 
 
 configfile: "config.yaml"
 
-
+WINDOW_SIZE = config["window_size"]
 PRIORITY_ASSEMBLIES = [
     "GCF_000001735.4",  # Arabidopsis thaliana
     "GCF_000309985.2",  # Brassica rapa
@@ -50,6 +41,7 @@ CHROMS = ["1", "2", "3", "4", "5"]
 NUCLEOTIDES = list("ACGT")
 models = [
     "gonzalobenegas/gpn-brassicales",
+    #"/scratch/users/gbenegas/checkpoints/GPN_Arabidopsis_multispecies/ConvNet_ss_12k/checkpoint-12000",
 ]
 all_radius = [
     100_000,
@@ -62,11 +54,15 @@ ruleorder: get_kmer_spectrum > get_embeddings
 
 rule all:
     input:
-        expand(f"output/merged_dataset/{config['window_size']}/{config['step_size']}/{config['add_rc']}/balanced/data/{{split}}", split=splits),
+        expand("output/variants/all/vep_embeddings/{model}.parquet", model=models),
+        #expand("output/variants/all/vep/{model}.parquet", model=models),
+        #expand("output/embedding/classification/{model}.parquet", model=models + ["kmers_3", "kmers_6"]),
+        #expand(f"output/merged_dataset/{config['window_size']}/{config['step_size']}/{config['add_rc']}/balanced/data/{{split}}", split=splits),
         #"output/embedding/embeddings/kmers.parquet",
         #"output/assemblies.tex",
         #expand("output/whole_genome/modisco/{model}/report", model=models),
         #expand("output/whole_genome/subset/promoter/modisco/{model}/report", model=models),
+        #expand("output/whole_genome/subset/promoter2/modisco/{model}/report", model=models),
         #expand("output/whole_genome/bed_probs/{model}/{nuc}.bw", model=models, nuc=NUCLEOTIDES),
         #"output/embedding/subset_no_repeats/windows.parquet",
         #expand("output/embedding/subset_no_repeats/umap/{model}.parquet", model=models),
@@ -100,7 +96,7 @@ rule filter_assemblies:
         config["assemblies_path"],
     shell:
         """
-        python -m gpn.filter_assemblies {input} {output} --keep_one_per_genus \
+        python -m gpn.ss.filter_assemblies {input} {output} --keep_one_per_genus \
         --priority_assemblies {PRIORITY_ASSEMBLIES}
         """
 
@@ -253,7 +249,7 @@ rule get_embeddings:
     threads: workflow.cores
     shell:
         """
-        python -m gpn.get_embeddings {input} {EMBEDDING_WINDOW_SIZE} \
+        python -m gpn.ss.get_embeddings {input} {EMBEDDING_WINDOW_SIZE} \
         {wildcards.model} {output} --per-device-batch-size 4000 --is-file \
         --dataloader-num-workers {threads}
         """
@@ -379,6 +375,8 @@ rule run_umap:
     output:
         "{anything}/umap/{model}.parquet",
     run:
+        from umap import UMAP
+
         embeddings = pd.read_parquet(input[0])
         proj = Pipeline([
             ("scaler", StandardScaler()),
@@ -386,6 +384,37 @@ rule run_umap:
         ]).fit_transform(embeddings)
         proj = pd.DataFrame(proj, columns=["UMAP1", "UMAP2"])
         proj.to_parquet(output[0], index=False)
+
+
+rule run_classification:
+    input:
+        "{anything}/windows.parquet",
+        "{anything}/embeddings/{model}.parquet",
+    output:
+        "{anything}/classification/{model}.parquet",
+    threads: workflow.cores
+    run:
+        from sklearn.linear_model import LogisticRegression, LogisticRegressionCV
+        from sklearn.model_selection import cross_val_predict, LeaveOneGroupOut
+        from sklearn.pipeline import Pipeline
+        from sklearn.preprocessing import StandardScaler
+
+        windows = pd.read_parquet(input[0])
+        features = pd.read_parquet(input[1])
+
+        clf = Pipeline([
+            ("scaler", StandardScaler()),
+            ("linear", LogisticRegressionCV(
+                random_state=42, verbose=True, max_iter=1000,
+                class_weight="balanced", n_jobs=-1
+                )
+            ),
+        ])
+        preds = cross_val_predict(
+            clf, features, windows.Region, groups=windows.chrom,
+            cv=LeaveOneGroupOut(), verbose=True,
+        )
+        pd.DataFrame({"pred_Region": preds}).to_parquet(output[0], index=False)
 
 
 rule run_leiden:
@@ -431,6 +460,47 @@ rule make_positions_promoter:
         print(intervals)
 
         exons = bf.merge(annotation.query("feature == 'exon'")).drop(columns="n_intervals")
+        intervals = bf.subtract(intervals, exons)
+        print(intervals)
+
+        repeats = bf.merge(load_repeatmasker(input[2]))
+        repeats.chrom = repeats.chrom.str.replace("Chr", "")
+        repeats = repeats[repeats.chrom.isin(CHROMS)]
+        intervals = bf.subtract(intervals, repeats)
+        print(intervals)
+
+        intervals = intersect_intervals(
+            intervals, bf.expand(genome.get_defined_intervals(), pad=-WINDOW_SIZE//2)
+        )
+        print(intervals)
+
+        intervals = filter_length(intervals, 30)
+        print(intervals)
+
+        positions = pd.concat(
+            intervals.progress_apply(find_positions, axis=1).values, ignore_index=True
+        )
+        print(positions)
+        positions.to_parquet(output[0], index=False)
+
+
+rule make_positions_promoter2:
+    input:
+        "output/genome.fa.gz",
+        "output/annotation.gtf.gz",
+        "input/repeats.bed.gz",
+    output:
+        "output/whole_genome/subset/promoter2/positions.parquet",
+    run:
+        genome = Genome(input[0])
+        genome.filter_chroms(CHROMS)
+        annotation = load_table(input[1])
+        annotation = annotation[annotation.chrom.isin(CHROMS)]
+
+        intervals = get_promoters(annotation, 1000, 1000)
+        print(intervals)
+
+        exons = bf.merge(annotation.query("feature == 'CDS'")).drop(columns="n_intervals")
         intervals = bf.subtract(intervals, exons)
         print(intervals)
 
@@ -528,7 +598,7 @@ rule get_logits:
     threads: workflow.cores // 2
     shell:
         """
-        python -m gpn.get_logits {input} {WINDOW_SIZE} {wildcards.model} {output} \
+        python -m gpn.ss.get_logits {input} {WINDOW_SIZE} {wildcards.model} {output} \
         --per-device-batch-size 4000 --is-file \
         --dataloader-num-workers {threads}
         """
@@ -621,6 +691,7 @@ rule plot_modisco:
     input:
         "{anything}/modisco/{model}/results.h5",
         "output/plantfdb/Ath_TF_binding_motifs.meme",
+        #"output/motif_db/jaspar.meme",
     output:
         directory("{anything}/modisco/{model}/report"),
     conda:
@@ -708,6 +779,8 @@ rule process_ensembl_vep:
     output:
         "output/ensembl_vep.parquet",
     run:
+        from cyvcf2 import VCF
+
         i = 0
         rows = []
         for variant in VCF(input[0]):
@@ -838,7 +911,22 @@ rule run_vep:
     threads: workflow.cores
     shell:
         """
-        python -m gpn.run_vep {input} {WINDOW_SIZE} {wildcards.model} {output} \
+        python -m gpn.ss.run_vep {input} {WINDOW_SIZE} {wildcards.model} {output} \
+        --per-device-batch-size 4000 --is-file \
+        --dataloader-num-workers {threads}
+        """
+
+
+rule run_vep_embeddings:
+    input:
+        "{anything}/variants.parquet",
+        "output/genome.fa.gz",
+    output:
+        "{anything}/vep_embeddings/{model}.parquet",
+    threads: workflow.cores
+    shell:
+        """
+        python -m gpn.ss.run_vep_embeddings {input} {WINDOW_SIZE} {wildcards.model} {output} \
         --per-device-batch-size 4000 --is-file \
         --dataloader-num-workers {threads}
         """
@@ -1015,6 +1103,12 @@ rule calculate_LD:
     output: "output/aragwas/LD_{radius,[0-9]+}_{threshold}.npz",
     threads: workflow.cores
     run:
+        import sgkit as sg
+        from sgkit.io.vcf import vcf_to_zarr
+        from dask.diagnostics import ProgressBar
+        pbar = ProgressBar()
+        pbar.register()
+
         ds = sg.load_dataset(input[0])
         ds["call_dosage"] = ds.call_genotype.sum(dim="ploidy")
         radius = int(wildcards.radius)
